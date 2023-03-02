@@ -1,0 +1,66 @@
+# Clone the git repo.
+steps:
+# This step builds the container image.
+# [START cloudbuild]
+# This step runs the unit tests on the app
+# - name: 'python:3.7-slim'
+#   id: Test
+#   entrypoint: /bin/sh
+#   args:
+#   - -c
+#   - 'pip install flask && python test_app.py -v'
+# This step builds the container image.
+- name: 'gcr.io/cloud-builders/docker'
+  id: Build
+  args:
+  - 'build'
+  - '-t'
+  - 'gcr.io/anthos-sandbox-275220/my-repository/hello-cloudbuild:$SHORT_SHA'
+  - '.'
+
+# This step pushes the image to Container Registry
+# The PROJECT_ID and SHORT_SHA variables are automatically
+# replaced by Cloud Build.
+- name: 'gcr.io/cloud-builders/docker'
+  id: Push
+  args:
+  - 'push'
+  - 'gcr.io/anthos-sandbox-275220/my-repository/hello-cloudbuild:$SHORT_SHA'
+
+#
+# This step generates the new manifest
+- name: 'gcr.io/cloud-builders/gcloud'
+  id: Generate manifest
+  entrypoint: /bin/sh
+  args:
+  - '-c'
+  - |
+     set -x
+     git config --global user.name "mandarmahajan3" && \
+     git config --global user.email "mandar.mahajan@wipro.com" && \
+     git branch -a
+     sed "s/GOOGLE_CLOUD_PROJECT/anthos-sandbox-275220/g" kubernetes.yaml.tpl | \
+     sed "s/COMMIT_SHA/${SHORT_SHA}/g" > manifests/dev/kubernetes.yaml
+     cat manifests/dev/kubernetes.yaml
+     git fetch origin main && git checkout main  && \
+     git add . && \
+     git commit -m "Manifest from commit $COMMIT_SHA && \
+     $(git log --format=%B -n 1 $COMMIT_SHA)" 
+     git config user.name
+     cp manifests/dev/kubernetes.yaml /kubernetes.yaml
+     cd ..
+     git clone https://mandarsdroid:$$PASSWORD@github.com/mandarsdroid/boa-manifests.git
+     cd boa-manifests 
+     pwd
+     rm -f /boa-manifests/manifests/dev/kubernetes.yaml
+     cp /kubernetes.yaml /boa-manifests/manifests/dev/kubernetes.yaml
+     ls -l manifests/dev
+     git add . && git commit -m "push to manifests repo"
+     git push https://mandarsdroid:$$PASSWORD@github.com/mandarsdroid/boa-manifests.git
+  secretEnv: ['PASSWORD']
+availableSecrets:
+  secretManager:
+  - versionName: projects/anthos-sandbox-275220/secrets/repopush/versions/latest
+    env: 'PASSWORD'
+# [END cloudbuild-delivery]
+
